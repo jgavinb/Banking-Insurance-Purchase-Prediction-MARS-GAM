@@ -1,0 +1,173 @@
+---
+title: "ML HW 1"
+author: "Gavin Brumfield"
+date: "2024-11-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Dependencies
+library(tidyverse)
+library(caret)
+library(glmnet)
+library(earth)
+library(pROC)
+library(mgcv)
+library(stats)
+```
+
+```{r}
+# Load Training Data
+train <- read_csv("/Users/gavinbrumfield/Documents/School/MSA/Fall 3/Machine Learning/Homework/Homework 1 ML/insurance_t.csv")
+valid <- read_csv("/Users/gavinbrumfield/Documents/School/MSA/Fall 3/Machine Learning/Homework/Homework 1 ML/insurance_v.csv")
+```
+
+```{r}
+summary(train)
+
+#NAs in ACCTAGE, PHONE, POS, POSAMT, INV, INVBAL, CC, CCBAL, CCPURC, INCOME, LORES, HMVAL, AGE, CRSCORE
+  # Binomial: INV, CC
+  # Continous: ACCTAGE, PHONE, POS, POSAMT, INVBAL, CCBAL, CCPURC, INCOME,    LORES, HMVAL, AGE, CRSCORE
+  # Missing Not at Random: INVBAL, CCBAL, HMVAL, CRSCORE
+```
+```{r}
+# Plot distributions of continuous variables to investigate normality
+ggplot(train, aes(x = ACCTAGE)) + geom_histogram()
+ggplot(train, aes(x = PHONE)) + geom_histogram()
+ggplot(train, aes(x = POS)) + geom_histogram()
+ggplot(train, aes(x = POSAMT)) + geom_histogram()
+ggplot(train, aes(x = INVBAL)) + geom_histogram()
+ggplot(train, aes(x = CCBAL)) + geom_histogram()
+ggplot(train, aes(x = CCPURC)) + geom_histogram()
+ggplot(train, aes(x = INCOME)) + geom_histogram()
+ggplot(train, aes(x = LORES)) + geom_histogram()
+ggplot(train, aes(x = HMVAL)) + geom_histogram()
+ggplot(train, aes(x = AGE)) + geom_histogram()
+ggplot(train, aes(x = CRSCORE)) + geom_histogram()
+```
+
+```{r}
+# Impute missing values continuous variables (Median)
+train$ACCTAGE[is.na(train$ACCTAGE)] <- median(train$ACCTAGE, na.rm = TRUE)
+train$PHONE[is.na(train$PHONE)] <- median(train$PHONE, na.rm = TRUE)
+train$POS[is.na(train$POS)] <- median(train$POS, na.rm = TRUE)
+train$POSAMT[is.na(train$POSAMT)] <- median(train$POSAMT, na.rm = TRUE)
+train$INVBAL[is.na(train$INVBAL)] <- median(train$INVBAL, na.rm = TRUE)
+train$CCBAL[is.na(train$CCBAL)] <- median(train$CCBAL, na.rm = TRUE)
+train$CCPURC[is.na(train$CCPURC)] <- median(train$CCPURC, na.rm = TRUE)
+train$INCOME[is.na(train$INCOME)] <- median(train$INCOME, na.rm = TRUE)
+train$LORES[is.na(train$LORES)] <- median(train$LORES, na.rm = TRUE)
+train$HMVAL[is.na(train$HMVAL)] <- median(train$HMVAL, na.rm = TRUE)
+train$AGE[is.na(train$AGE)] <- median(train$AGE, na.rm = TRUE)
+train$CRSCORE[is.na(train$CRSCORE)] <- median(train$CRSCORE, na.rm = TRUE)
+
+valid$ACCTAGE[is.na(valid$ACCTAGE)] <- median(valid$ACCTAGE, na.rm = TRUE)
+valid$PHONE[is.na(valid$PHONE)] <- median(valid$PHONE, na.rm = TRUE)
+valid$POS[is.na(valid$POS)] <- median(valid$POS, na.rm = TRUE)
+valid$POSAMT[is.na(valid$POSAMT)] <- median(valid$POSAMT, na.rm = TRUE)
+valid$INVBAL[is.na(valid$INVBAL)] <- median(valid$INVBAL, na.rm = TRUE)
+valid$CCBAL[is.na(valid$CCBAL)] <- median(valid$CCBAL, na.rm = TRUE)
+valid$CCPURC[is.na(valid$CCPURC)] <- median(valid$CCPURC, na.rm = TRUE)
+valid$INCOME[is.na(valid$INCOME)] <- median(valid$INCOME, na.rm = TRUE)
+valid$LORES[is.na(valid$LORES)] <- median(valid$LORES, na.rm = TRUE)
+valid$HMVAL[is.na(valid$HMVAL)] <- median(valid$HMVAL, na.rm = TRUE)
+valid$AGE[is.na(valid$AGE)] <- median(valid$AGE, na.rm = TRUE)
+valid$CRSCORE[is.na(valid$CRSCORE)] <- median(valid$CRSCORE, na.rm = TRUE)
+
+# Impute missing values binary variables (New Level: 2)
+train$INV[is.na(train$INV)] <- 2
+train$CC[is.na(train$CC)] <- 2
+valid$INV[is.na(valid$INV)] <- 2
+valid$CC[is.na(valid$CC)] <- 2
+
+# Cateogrical Variables (Factored)
+train$INV <- as.factor(train$INV)
+train$CC <- as.factor(train$CC)
+train$INS <- as.factor(train$INS)
+train$BRANCH <- as.factor(train$BRANCH)
+train$DDA <- as.factor(train$DDA)
+train$DIRDEP <- as.factor(train$DIRDEP)
+train$SAV <- as.factor(train$SAV)
+train$ATM <- as.factor(train$ATM)
+train$CD <- as.factor(train$CD)
+train$IRA <- as.factor(train$IRA)
+train$MM <- as.factor(train$MM)
+train$SDB <- as.factor(train$SDB)
+train$INAREA <- as.factor(train$INAREA)
+valid$INV <- as.factor(valid$INV)
+valid$CC <- as.factor(valid$CC)
+valid$INS <- as.factor(valid$INS)
+valid$BRANCH <- as.factor(valid$BRANCH)
+valid$DDA <- as.factor(valid$DDA)
+valid$DIRDEP <- as.factor(valid$DIRDEP)
+valid$SAV <- as.factor(valid$SAV)
+valid$ATM <- as.factor(valid$ATM)
+valid$CD <- as.factor(valid$CD)
+valid$IRA <- as.factor(valid$IRA)
+valid$MM <- as.factor(valid$MM)
+valid$SDB <- as.factor(valid$SDB)
+valid$INAREA <- as.factor(valid$INAREA)
+summary(valid)
+```
+
+```{r}
+mars <- earth(INS ~ ., data = train, glm=list(family="binomial"))
+summary(mars)
+evimp(mars)
+```
+
+```{r}
+predictions <- predict(mars, type="response")
+
+roc_obj <- roc(train$INS, predictions)
+
+plot(roc_obj, col = "blue", print.auc = TRUE, main = "ROC Curve for MARS MODEL")
+```
+
+```{r}
+# Count of Unique Values per Variable
+vars <- c("ACCTAGE", "DDABAL", "DEP", "DEPAMT", "CHECKS", "NSF", "NSFAMT", "PHONE", "TELLER", "SAVBAL", "ATMAMT", "POS", "POSAMT", "CDBAL", "IRABAL", "INVBAL", "MMBAL", "MMCRED", "CCBAL", "CCPURC", "INCOME", "LORES", "HMVAL", "AGE", "CRSCORE")
+unique_values <- sapply(train[vars], function(x) length(unique(x)))
+print(unique_values)
+```
+
+```{r}
+# Building gam with splines on all variables not listed in categorical (factored) Had to factor NSF, MMCRED, and CCPURC as less than 10 unique values
+set.seed(4)
+gam_model <- gam(INS ~ s(ACCTAGE) + s(DDABAL) + s(DEP) + s(DEPAMT) + s(CHECKS) + s(NSFAMT) + s(PHONE) + s(TELLER) + s(SAVBAL) + s(ATMAMT) + s(POS) + s(POSAMT) + s(CDBAL) + s(IRABAL) + s(INVBAL) + s(MMBAL) + s(CCBAL) + s(INCOME) + s(LORES) + s(HMVAL) + s(AGE) + s(CRSCORE) + factor(NSF) + factor(MMCRED) + factor(CCPURC) + DDA + DIRDEP + SAV + ATM + CD + IRA + INV + MM + CC + SDB + INAREA, data = train, method = 'REML', select = TRUE, family = "binomial")
+```
+
+```{r}
+summary(gam_model)
+plot(gam_model)
+```
+
+```{r}
+# ROC Curve for GAM Model
+gam_predictions <- predict(gam_model, type="response")
+
+roc_obj <- roc(train$INS, gam_predictions)
+
+plot(roc_obj, col = "blue", print.auc = TRUE, main = "ROC Curve for GAM MODEL")
+```
+```{r}
+# Calculating Logarithmically Adjusted Alpha Level
+
+n <- nrow(train)
+k <- 0.05
+
+alpha <- k / log(n)
+
+print("Sample Size:")
+print(n)
+print("Logarithmically Adjusted Alpha Level:")
+print(alpha)
+```
+
+
+
+
